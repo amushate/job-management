@@ -35,15 +35,6 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
         this.mapper = mapper;
         executor = new ThreadPoolTaskScheduler();
         jobPriorityQueue = new PriorityQueue<>();
-        //TODO set queue size and implement paging if the jobs are many
-        List<Job> jobList = jobRepository.findAll();
-        for (Job job : jobList) {
-            if (job.getStatus() != JobStatus.SUCCESS) {
-                job.setStatus(JobStatus.QUEUED);
-                jobRepository.save(job);
-                jobPriorityQueue.add(job);
-            }
-        }
     }
 
     @Override
@@ -54,8 +45,8 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
             throw new InvalidJobException("Cant add a null job");
         }
         Job job = mapper.map(addJobRequest, Job.class);
-        job.setStatus(JobStatus.QUEUED);
         job = jobRepository.save(job);
+        jobPriorityQueue.add(job);
         log.info("New Job added {}", job);
         return AddJobResponse.builder().message("Job added successfully").build();
     }
@@ -76,20 +67,20 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
 
     @Override
     public void scheduleJobs() {
+        jobPriorityQueue = new PriorityQueue<>();
         List<Job> jobs = jobRepository.findAll();
-        if(jobPriorityQueue.isEmpty()) {
-            jobPriorityQueue.addAll(jobs);
-        }
+        jobPriorityQueue.addAll(jobs);
     }
 
     @Async
     @Override
     public void runJobs() {
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
         while (hasJobs()) {
             Job job = getJobForExecution();
             if (job != null) {
                 try {
-                    executor.initialize();
                     Class<?> aClass = Class.forName(job.getClassName());
                     Runnable runnable = (Runnable) aClass.getDeclaredConstructor().newInstance();
                     if (job.getCronExpression() != null) {
@@ -127,8 +118,7 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
 
     @Override
     public StopExecutionResponse stop() {
-        log.info("Shutting down job management system.....");
-        executor.shutdown();
+        executor.getScheduledThreadPoolExecutor().shutdownNow();
         jobRepository.findByStatus(JobStatus.QUEUED).forEach(job -> {
             job.setStatus(JobStatus.QUEUED);
             jobRepository.save(job);

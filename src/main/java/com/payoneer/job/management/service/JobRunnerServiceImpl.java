@@ -33,9 +33,8 @@ public class JobRunnerServiceImpl implements JobRunnerService {
     public StopExecutionResponse stop() {
         log.info("Shutting down job management system.....");
         schedulingService.stop();
-        log.info("Shutting down completed.....");
         return StopExecutionResponse.builder()
-                .message("Job Execution stopped")
+                .message("Shutting down ...")
                 .build();
     }
 

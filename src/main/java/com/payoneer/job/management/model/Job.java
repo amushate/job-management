@@ -23,7 +23,7 @@ public class Job implements Comparable<Job> {
         int value = this.priority.getValue();
         if(value == job.getPriority().getValue()) {
             return 0;
-        } else if(value > this.priority.getValue()){
+        } else if(value > job.priority.getValue()){
             return 1;
         } else {
             return -1;

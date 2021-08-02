@@ -11,7 +11,7 @@ public class FileIndexingJob implements Runnable {
     @Override
     public void run() {
         for(int i=0; i<10; i++){
-            log.info("Counting.....{}", i);
+            log.info("Index File Job.....{}", i);
             Thread.sleep(1000);
         }
         log.info("Completed File indexing..."); ;
