@@ -10,7 +10,7 @@ public class FileIndexingJob implements Runnable {
     @SneakyThrows
     @Override
     public void run() {
-        for(int i=0; i<10; i++){
+        for(int i=0; i<5; i++){
             log.info("Index File Job.....{}", i);
             Thread.sleep(1000);
         }

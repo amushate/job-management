@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledFuture;
 
 @Slf4j
 @Service
@@ -30,10 +29,10 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
     private ThreadPoolTaskScheduler executor;
     private PriorityQueue<Job> jobPriorityQueue; // create a jobs heap, highest priority job will be on top
 
-    public JobSchedulingServiceImpl(JobRepository jobRepository, Mapper mapper ) {
+    public JobSchedulingServiceImpl(JobRepository jobRepository, Mapper mapper, ThreadPoolTaskScheduler executor) {
         this.jobRepository = jobRepository;
         this.mapper = mapper;
-        executor = new ThreadPoolTaskScheduler();
+        this.executor = executor;
         jobPriorityQueue = new PriorityQueue<>();
     }
 
@@ -46,7 +45,6 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
         }
         Job job = mapper.map(addJobRequest, Job.class);
         job = jobRepository.save(job);
-        jobPriorityQueue.add(job);
         log.info("New Job added {}", job);
         return AddJobResponse.builder().message("Job added successfully").build();
     }
@@ -79,47 +77,45 @@ public class JobSchedulingServiceImpl implements JobSchedulingService {
         executor.initialize();
         while (hasJobs()) {
             Job job = getJobForExecution();
-            if (job != null) {
-                try {
-                    Class<?> aClass = Class.forName(job.getClassName());
-                    Runnable runnable = (Runnable) aClass.getDeclaredConstructor().newInstance();
-                    if (job.getCronExpression() != null) {
-                        //TODO cro scheduled jobs should set status to running on next execution time.
-                        ScheduledFuture<?> scheduledFuture = executor.schedule(runnable, new CronTrigger(job.getCronExpression()));
-                        job.setStatus(JobStatus.RUNNING);
-                        jobRepository.save(job);
-                        //TODO should the jobs run concurrently
-                        if (scheduledFuture != null) {
-                            scheduledFuture.get();
-                        } else {
-                            log.info("");
-                        }
-                    } else {
-                        Future<?> future = executor.submit(runnable);
-                        job.setStatus(JobStatus.RUNNING);
-                        jobRepository.save(job);
-                        future.get();
-                    }
-                    job.setStatus(JobStatus.SUCCESS);
-                    jobRepository.save(job);
-                } catch (ClassNotFoundException |
-                        InvocationTargetException |
-                        InstantiationException |
-                        ExecutionException |
-                        InterruptedException |
-                        IllegalAccessException | NoSuchMethodException e) {
-                    log.error("Failed to execute job", e);
-                    job.setStatus(JobStatus.FAILED);
-                    jobRepository.save(job);
-                }
+            try {
+                executeJob(job);
+            } catch (Exception e) {
+                log.error("Failed to execute job", e);
+                job.setStatus(JobStatus.FAILED);
+                jobRepository.save(job);
             }
+        }
+    }
+
+    public void executeJob(Job job) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, ExecutionException, InterruptedException {
+        if (job != null && job.getClassName() != null) {
+            Class<?> aClass = Class.forName(job.getClassName());
+            Runnable runnable = (Runnable) aClass.getDeclaredConstructor().newInstance();
+            if (job.getCronExpression() != null) {
+                //TODO cro scheduled jobs should set status to running on next execution time.
+                Future<?> future = executor.schedule(runnable, new CronTrigger(job.getCronExpression()));
+                job.setStatus(JobStatus.RUNNING);
+                jobRepository.save(job);
+                future.get();
+            } else {
+                Future<?> future = executor.submit(runnable);
+                job.setStatus(JobStatus.RUNNING);
+                jobRepository.save(job);
+                future.get();
+            }
+            job.setStatus(JobStatus.SUCCESS);
+            job = jobRepository.save(job);
+            log.info("Job executed successfully {}", job);
+        } else {
+            log.error("Failed to execute job {}", job);
+            throw new InvalidJobException("Job not properly configured");
         }
     }
 
     @Override
     public StopExecutionResponse stop() {
         executor.getScheduledThreadPoolExecutor().shutdownNow();
-        jobRepository.findByStatus(JobStatus.QUEUED).forEach(job -> {
+        jobRepository.findByStatus(JobStatus.RUNNING).forEach(job -> {
             job.setStatus(JobStatus.QUEUED);
             jobRepository.save(job);
         });

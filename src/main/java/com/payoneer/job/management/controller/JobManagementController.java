@@ -36,11 +36,13 @@ public class JobManagementController {
 
     @PostMapping("/start-job-execution")
     public ResponseEntity<StartExecutionResponse> startJobExecution(@RequestBody StartExecutionRequest request) {
+        //TODO specify whether to run all jobs
         return ResponseEntity.ok(jobRunnerService.start());
     }
 
     @PostMapping("/stop-job-execution")
     public ResponseEntity<StopExecutionResponse> stopJobExecution(@RequestBody StopExecutionRequest request) {
+        //TODO specify whether to stops all jobs
         return ResponseEntity.ok(jobRunnerService.stop());
     }
 
